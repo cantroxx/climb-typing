@@ -112,18 +112,18 @@ async function loadRankings() {
       const data = await res.json();
       if (data) return Object.values(data);
       return [];
-    } catch (e) { /* 네트워크 실패 시 로컬로 */ }
+    } catch { /* 네트워크 실패 시 로컬로 */ }
   }
   try {
     if (window.storage) {
       const r = await window.storage.get(RANK_KEY);
       return r ? JSON.parse(r.value) : [];
     }
-  } catch (e) { /* 키 없음 */ }
+  } catch { /* 키 없음 */ }
   try {
     const r = window.localStorage && window.localStorage.getItem(RANK_KEY);
     return r ? JSON.parse(r) : [];
-  } catch (e) { return []; }
+  } catch { return []; }
 }
 
 async function addRankingEntry(entry) {
@@ -135,22 +135,20 @@ async function addRankingEntry(entry) {
         body: JSON.stringify(entry),
       });
       return await loadRankings();
-    } catch (e) { /* 실패 시 로컬로 */ }
+    } catch { /* 실패 시 로컬로 */ }
   }
   const list = await loadRankings();
   const next = [...list, entry];
   const data = JSON.stringify(next);
-  try { if (window.storage) { await window.storage.set(RANK_KEY, data); return next; } } catch (e) { /* 무시 */ }
-  try { window.localStorage && window.localStorage.setItem(RANK_KEY, data); } catch (e) { /* 무시 */ }
+  try { if (window.storage) { await window.storage.set(RANK_KEY, data); return next; } } catch { /* 무시 */ }
+  try { window.localStorage && window.localStorage.setItem(RANK_KEY, data); } catch { /* 무시 */ }
   return next;
 }
 
 async function clearAllRankings() {
-  if (FIREBASE_URL) {
-    try { await fetch(`${FIREBASE_URL}/rankings.json`, { method: "DELETE" }); return; } catch (e) { /* 무시 */ }
-  }
-  try { if (window.storage) { await window.storage.set(RANK_KEY, "[]"); return; } } catch (e) { /* 무시 */ }
-  try { window.localStorage && window.localStorage.setItem(RANK_KEY, "[]"); } catch (e) { /* 무시 */ }
+  // 공유 Firebase 기록은 공개 클라이언트에서 일괄 삭제하지 않는다.
+  try { if (window.storage) { await window.storage.set(RANK_KEY, "[]"); return; } } catch { /* 무시 */ }
+  try { window.localStorage && window.localStorage.setItem(RANK_KEY, "[]"); } catch { /* 무시 */ }
 }
 
 const sortRank = (list) => [...list].sort((a, b) => b.cpm - a.cpm).slice(0, 20);
@@ -174,7 +172,7 @@ function beep(type) {
     else if (type === "down") { o.frequency.setValueAtTime(330, ctx.currentTime); o.frequency.setValueAtTime(196, ctx.currentTime + 0.12); }
     else { o.frequency.setValueAtTime(1047, ctx.currentTime); o.frequency.setValueAtTime(1319, ctx.currentTime + 0.1); o.frequency.setValueAtTime(1568, ctx.currentTime + 0.2); }
     o.start(); o.stop(ctx.currentTime + 0.22);
-  } catch (e) { /* 소리 미지원 */ }
+  } catch { /* 소리 미지원 */ }
 }
 
 const C = {
@@ -184,6 +182,41 @@ const C = {
 };
 
 const MEDALS = ["🥇", "🥈", "🥉"];
+
+function OptBtn({ on, children, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      fontFamily: "inherit", fontSize: 15, padding: "7px 14px", borderRadius: 999, cursor: "pointer",
+      border: `2px solid ${on ? C.star : C.platform}`,
+      background: on ? C.star : "transparent", color: on ? "#3a2d00" : C.dim,
+    }}>{children}</button>
+  );
+}
+
+function RankList({ highlight, rankLoading, rankings }) {
+  return (
+    <div style={{ maxHeight: 240, overflowY: "auto", textAlign: "left" }}>
+      {rankLoading && <p style={{ textAlign: "center", color: C.dim, fontSize: 14 }}>랭킹을 불러오는 중…</p>}
+      {!rankLoading && rankings.length === 0 && (
+        <p style={{ textAlign: "center", color: C.dim, fontSize: 14 }}>아직 기록이 없어요. 첫 번째 등반가가 되어 보세요!</p>
+      )}
+      {!rankLoading && rankings.map((r, i) => (
+        <div key={`${r.ts ?? i}-${r.name}`} style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 10, fontSize: 14,
+          background: highlight === i ? "rgba(255,216,77,0.18)" : i % 2 ? "rgba(0,0,0,0.18)" : "transparent",
+          border: highlight === i ? `1px solid ${C.star}` : "1px solid transparent",
+        }}>
+          <span style={{ width: 28, textAlign: "center" }}>{MEDALS[i] || i + 1}</span>
+          <span style={{ flex: 1, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {r.win ? "🏆 " : ""}{r.name}
+          </span>
+          <span style={{ color: C.mint, width: 70, textAlign: "right" }}>{r.cpm}타/분</span>
+          <span style={{ color: C.dim, fontSize: 11, width: 96, textAlign: "right" }}>{r.setting}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function ClimbTypingGame() {
   const [phase, setPhase] = useState("title");
@@ -205,6 +238,7 @@ export default function ClimbTypingGame() {
   const [stats, setStats] = useState({ strokes: 0, ms: 0, ok: 0, tries: 0 });
   const [playerDone, setPlayerDone] = useState(false);
   const [confirmQuit, setConfirmQuit] = useState(false);
+  const [confirmClearRankings, setConfirmClearRankings] = useState(false);
   const [rankings, setRankings] = useState([]);
   const [rankLoading, setRankLoading] = useState(false);
   const [showRanking, setShowRanking] = useState(false);
@@ -212,6 +246,7 @@ export default function ClimbTypingGame() {
   const [nameError, setNameError] = useState("");
   const [registered, setRegistered] = useState(false);
   const [myRank, setMyRank] = useState(null);
+  const [isComposing, setIsComposing] = useState(false);
 
   const usedRef = useRef(new Set());
   const R = useRef({});
@@ -227,8 +262,6 @@ export default function ClimbTypingGame() {
     setRankings(sortRank(list));
     setRankLoading(false);
   };
-  useEffect(() => { refreshRankings(); }, []);
-
   const startGame = () => {
     usedRef.current = new Set();
     finishedRef.current = false;
@@ -349,6 +382,8 @@ export default function ClimbTypingGame() {
       }
     }, 100);
     return () => clearInterval(id);
+    // 게임 틱은 goal/round 변경 시 재생성되며 이동 함수는 해당 렌더의 최신 상태를 사용한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, round, goal]);
 
   const submit = () => {
@@ -375,7 +410,7 @@ export default function ClimbTypingGame() {
     }
   };
 
-  const registerScore = async () => {
+  const registerScore = async (timestamp) => {
     if (registered) return;
     const name = playerName.trim();
     if (!name) { setNameError("이름을 입력해 주세요!"); return; }
@@ -389,7 +424,7 @@ export default function ClimbTypingGame() {
       win: winner === "나",
       setting: `${goal}층·${racerCount}명·${skill}`,
       date: new Date().toLocaleDateString("ko-KR", { month: "numeric", day: "numeric" }),
-      ts: Date.now(),
+      ts: timestamp,
     };
     setRankLoading(true);
     const list = await addRankingEntry(entry);
@@ -403,13 +438,14 @@ export default function ClimbTypingGame() {
   const clearRankings = async () => {
     setRankings([]);
     await clearAllRankings();
+    setConfirmClearRankings(false);
   };
 
   const charStates = () => {
     if (!sentence) return [];
     return sentence.t.split("").map((ch, i) => {
       if (i >= input.length) return { ch, st: "todo" };
-      if (composingRef.current && i === input.length - 1) return { ch, st: "typing" };
+      if (isComposing && i === input.length - 1) return { ch, st: "typing" };
       return { ch, st: input[i] === ch ? "ok" : "bad" };
     });
   };
@@ -420,37 +456,6 @@ export default function ClimbTypingGame() {
   const n = racers.length;
   const big = n <= 6;
   const towerH = goal >= 12 ? 300 : goal >= 8 ? 250 : 210;
-
-  const OptBtn = ({ on, children, onClick }) => (
-    <button onClick={onClick} style={{
-      fontFamily: "inherit", fontSize: 15, padding: "7px 14px", borderRadius: 999, cursor: "pointer",
-      border: `2px solid ${on ? C.star : C.platform}`,
-      background: on ? C.star : "transparent", color: on ? "#3a2d00" : C.dim,
-    }}>{children}</button>
-  );
-
-  const RankList = ({ highlight }) => (
-    <div style={{ maxHeight: 240, overflowY: "auto", textAlign: "left" }}>
-      {rankLoading && <p style={{ textAlign: "center", color: C.dim, fontSize: 14 }}>랭킹을 불러오는 중…</p>}
-      {!rankLoading && rankings.length === 0 && (
-        <p style={{ textAlign: "center", color: C.dim, fontSize: 14 }}>아직 기록이 없어요. 첫 번째 등반가가 되어 보세요!</p>
-      )}
-      {!rankLoading && rankings.map((r, i) => (
-        <div key={i} style={{
-          display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 10, fontSize: 14,
-          background: highlight === i ? "rgba(255,216,77,0.18)" : i % 2 ? "rgba(0,0,0,0.18)" : "transparent",
-          border: highlight === i ? `1px solid ${C.star}` : "1px solid transparent",
-        }}>
-          <span style={{ width: 28, textAlign: "center" }}>{MEDALS[i] || i + 1}</span>
-          <span style={{ flex: 1, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {r.win ? "🏆 " : ""}{r.name}
-          </span>
-          <span style={{ color: C.mint, width: 70, textAlign: "right" }}>{r.cpm}타/분</span>
-          <span style={{ color: C.dim, fontSize: 11, width: 96, textAlign: "right" }}>{r.setting}</span>
-        </div>
-      ))}
-    </div>
-  );
 
   return (
     <div style={{ minHeight: "100vh", background: `linear-gradient(180deg, ${C.sky1}, ${C.sky2})`, color: C.text, fontFamily: "'Jua', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", padding: "16px 12px" }}>
@@ -541,17 +546,24 @@ export default function ClimbTypingGame() {
             <h2 style={{ textAlign: "center", fontSize: 22, margin: "0 0 14px", color: C.star }}>
               🏅 명예의 전당 {FIREBASE_URL ? "(우리 반)" : ""}
             </h2>
-            <RankList />
+            <RankList rankLoading={rankLoading} rankings={rankings} />
             <div style={{ display: "flex", gap: 10, justifyContent: "center", marginTop: 16 }}>
               <button onClick={() => setShowRanking(false)} style={{ fontFamily: "inherit", fontSize: 16, padding: "9px 26px", borderRadius: 999, border: "none", cursor: "pointer", background: C.star, color: "#3a2d00" }}>
                 돌아가기
               </button>
-              {rankings.length > 0 && (
-                <button onClick={clearRankings} style={{ fontFamily: "inherit", fontSize: 14, padding: "9px 18px", borderRadius: 999, border: `2px solid ${C.platform}`, cursor: "pointer", background: "transparent", color: C.dim }}>
-                  기록 지우기
+              {!FIREBASE_URL && rankings.length > 0 && !confirmClearRankings && (
+                <button onClick={() => setConfirmClearRankings(true)} style={{ fontFamily: "inherit", fontSize: 14, padding: "9px 18px", borderRadius: 999, border: `2px solid ${C.platform}`, cursor: "pointer", background: "transparent", color: C.dim }}>
+                  이 기기의 기록 지우기
                 </button>
               )}
             </div>
+            {!FIREBASE_URL && confirmClearRankings && (
+              <div style={{ marginTop: 12, textAlign: "center", color: C.coral, fontSize: 13 }}>
+                <p>이 기기에 저장된 랭킹을 모두 지울까요?</p>
+                <button onClick={clearRankings} style={{ marginRight: 8 }}>삭제 확인</button>
+                <button onClick={() => setConfirmClearRankings(false)}>취소</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -608,8 +620,8 @@ export default function ClimbTypingGame() {
                   disabled={playerDone}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={onKeyDown}
-                  onCompositionStart={() => (composingRef.current = true)}
-                  onCompositionEnd={() => (composingRef.current = false)}
+                  onCompositionStart={() => { composingRef.current = true; setIsComposing(true); }}
+                  onCompositionEnd={() => { composingRef.current = false; setIsComposing(false); }}
                   placeholder={playerDone ? "친구들이 이동 중…" : "여기에 입력하고 Enter"}
                   autoComplete="off" autoCorrect="off" spellCheck={false}
                   style={{ width: "100%", boxSizing: "border-box", fontFamily: "inherit", fontSize: 19, padding: "12px 14px", borderRadius: 12, border: "none", background: "rgba(0,0,0,0.35)", color: C.text, textAlign: "center", opacity: playerDone ? 0.6 : 1 }}
@@ -638,11 +650,11 @@ export default function ClimbTypingGame() {
                       <input
                         value={playerName}
                         onChange={(e) => { setPlayerName(e.target.value.slice(0, 10)); setNameError(""); }}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) registerScore(); }}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) registerScore(Date.now()); }}
                         placeholder="이름 입력 (10자)"
                         style={{ fontFamily: "inherit", fontSize: 15, padding: "9px 14px", borderRadius: 10, border: `1px solid ${nameError ? C.coral : C.platform}`, background: "rgba(0,0,0,0.35)", color: C.text, width: 150, textAlign: "center" }}
                       />
-                      <button onClick={registerScore} disabled={rankLoading} style={{ fontFamily: "inherit", fontSize: 15, padding: "9px 18px", borderRadius: 10, border: "none", cursor: "pointer", background: C.mint, color: "#00331c", opacity: rankLoading ? 0.6 : 1 }}>
+                      <button onClick={() => registerScore(Date.now())} disabled={rankLoading} style={{ fontFamily: "inherit", fontSize: 15, padding: "9px 18px", borderRadius: 10, border: "none", cursor: "pointer", background: C.mint, color: "#00331c", opacity: rankLoading ? 0.6 : 1 }}>
                         {rankLoading ? "등록 중…" : "🏅 랭킹 등록"}
                       </button>
                     </div>
@@ -653,7 +665,7 @@ export default function ClimbTypingGame() {
                     <p style={{ color: C.mint, fontSize: 15, margin: "0 0 8px" }}>
                       {myRank !== null && myRank >= 0 ? `등록 완료! 현재 ${myRank + 1}위예요 ${MEDALS[myRank] || "🎖️"}` : "등록 완료! (순위권 밖이지만 기록은 남았어요)"}
                     </p>
-                    <RankList highlight={myRank} />
+                    <RankList highlight={myRank} rankLoading={rankLoading} rankings={rankings} />
                   </div>
                 )}
 

@@ -1,16 +1,22 @@
-# React + Vite
+# 올라타자! 타자 서바이벌
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+초등학생용 문장 타자 대결 게임입니다. React와 Vite로 구성되어 있습니다.
 
-Currently, two official plugins are available:
+## 로컬 실행과 점검
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+```bash
+npm install
+npm run dev
+npm run check
+```
 
-## React Compiler
+`npm run check`는 소스 린트와 프로덕션 빌드를 차례로 실행합니다. `docs/assets/`는 이전 배포에서 만들어진 생성물이므로 린트 대상이 아니며, 실제 수정 기준은 `src/`입니다.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 랭킹 데이터 안전
 
-## Expanding the ESLint configuration
+- Firebase URL이 설정된 현재 배포는 학급 공유 랭킹을 읽고 새 기록을 추가합니다.
+- 공개 클라이언트에서는 공유 Firebase 랭킹 전체 삭제를 실행하지 않습니다.
+- 로컬 모드에서만 이 기기의 기록 삭제 메뉴가 보이며, 삭제 전 확인 단계를 거칩니다.
+- 실제 학급 운영 전에는 Realtime Database 규칙에서 읽기·쓰기 범위와 입력값 검증을 별도로 확인해야 합니다.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+빌드나 린트는 Firebase에 접속하거나 랭킹 데이터를 변경하지 않습니다.
